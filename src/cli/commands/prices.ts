@@ -30,7 +30,7 @@ export async function pricesCommand(): Promise<void> {
         type: 'list',
         name: 'selectedProject',
         message: 'Select a project:',
-        choices: config.projects.map((p) => ({
+        choices: config.projects.map((p: ProjectConfig) => ({
           name: `${p.name} (${p.environment})`,
           value: p.name,
         })),
@@ -251,7 +251,7 @@ async function createPrice(
       {
         type: 'number',
         name: 'interval_count',
-        message: 'Interval count:',
+        message: 'Interval count (e.g., 1=every interval, 3=every 3 intervals):',
         default: 1,
         validate: (input: number) => input > 0 ? true : 'Must be greater than 0',
       },

@@ -30,7 +30,7 @@ export async function productsCommand(): Promise<void> {
         type: 'list',
         name: 'selectedProject',
         message: 'Select a project:',
-        choices: config.projects.map((p) => ({
+        choices: config.projects.map((p: ProjectConfig) => ({
           name: `${p.name} (${p.environment})`,
           value: p.name,
         })),

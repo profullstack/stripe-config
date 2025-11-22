@@ -2,8 +2,8 @@ import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
-import type { Config, ProjectConfig } from './types';
-import { ConfigError } from './types';
+import type { Config, ProjectConfig } from './types.js';
+import { ConfigError } from './types.js';
 
 /**
  * Manages configuration file operations for Stripe projects
@@ -103,7 +103,7 @@ export class ConfigManager {
     const config = await this.loadConfig();
 
     // Check if project with same name already exists
-    const existing = config.projects.find((p) => p.name === projectInput.name);
+    const existing = config.projects.find((p: ProjectConfig) => p.name === projectInput.name);
     if (existing) {
       throw new ConfigError(
         `Project with name "${projectInput.name}" already exists`
@@ -135,7 +135,7 @@ export class ConfigManager {
    */
   async getProject(name: string): Promise<ProjectConfig> {
     const config = await this.loadConfig();
-    const project = config.projects.find((p) => p.name === name);
+    const project = config.projects.find((p: ProjectConfig) => p.name === name);
 
     if (!project) {
       throw new ConfigError(`Project "${name}" not found`);
@@ -160,7 +160,7 @@ export class ConfigManager {
     updates: Partial<Omit<ProjectConfig, 'id' | 'name' | 'createdAt'>>
   ): Promise<ProjectConfig> {
     const config = await this.loadConfig();
-    const projectIndex = config.projects.findIndex((p) => p.name === name);
+    const projectIndex = config.projects.findIndex((p: ProjectConfig) => p.name === name);
 
     if (projectIndex === -1) {
       throw new ConfigError(`Project "${name}" not found`);
@@ -184,7 +184,7 @@ export class ConfigManager {
    */
   async deleteProject(name: string): Promise<void> {
     const config = await this.loadConfig();
-    const projectIndex = config.projects.findIndex((p) => p.name === name);
+    const projectIndex = config.projects.findIndex((p: ProjectConfig) => p.name === name);
 
     if (projectIndex === -1) {
       throw new ConfigError(`Project "${name}" not found`);
@@ -208,7 +208,7 @@ export class ConfigManager {
     const config = await this.loadConfig();
 
     // Verify project exists
-    const project = config.projects.find((p) => p.name === name);
+    const project = config.projects.find((p: ProjectConfig) => p.name === name);
     if (!project) {
       throw new ConfigError(`Project "${name}" not found`);
     }

@@ -7,8 +7,8 @@ import type {
   UpdatePriceInput,
   ListOptions,
   PriceListOptions,
-} from './types';
-import { StripeClientError } from './types';
+} from './types.js';
+import { StripeClientError } from './types.js';
 
 /**
  * Wrapper around Stripe SDK for type-safe API operations
