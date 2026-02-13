@@ -21,6 +21,9 @@ export type {
   TransformQuantityConfig,
   ListOptions,
   PriceListOptions,
+  CreateConnectAccountInput,
+  CreateAccountLinkInput,
+  ConnectListOptions,
 } from './core/types.js';
 
 // Export custom errors
@@ -125,6 +128,45 @@ export class PriceManager {
   }
 }
 
+/**
+ * Connect Manager - High-level API for Stripe Connect operations
+ */
+export class ConnectManager {
+  private stripeClient: StripeClient;
+
+  constructor(project: ProjectConfig) {
+    this.stripeClient = new StripeClient(project);
+  }
+
+  /**
+   * Create a connected account
+   */
+  async createAccount(input: CreateConnectAccountInput) {
+    return this.stripeClient.createConnectAccount(input);
+  }
+
+  /**
+   * Create an account onboarding link
+   */
+  async createLink(input: CreateAccountLinkInput) {
+    return this.stripeClient.createAccountLink(input);
+  }
+
+  /**
+   * Get a connected account by ID
+   */
+  async get(accountId: string) {
+    return this.stripeClient.getConnectAccount(accountId);
+  }
+
+  /**
+   * List connected accounts
+   */
+  async list(options?: ConnectListOptions) {
+    return this.stripeClient.listConnectAccounts(options);
+  }
+}
+
 // Re-import types for the managers
-import type { ProjectConfig, CreateProductInput, UpdateProductInput, CreatePriceInput, UpdatePriceInput, ListOptions, PriceListOptions } from './core/types.js';
+import type { ProjectConfig, CreateProductInput, UpdateProductInput, CreatePriceInput, UpdatePriceInput, ListOptions, PriceListOptions, CreateConnectAccountInput, CreateAccountLinkInput, ConnectListOptions } from './core/types.js';
 import { StripeClient } from './core/stripe-client.js';

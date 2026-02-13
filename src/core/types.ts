@@ -164,6 +164,53 @@ export interface UpdatePriceInput {
 }
 
 /**
+ * Input for creating a Stripe Connect account
+ */
+export interface CreateConnectAccountInput {
+  /** Account type */
+  type: 'express' | 'standard' | 'custom';
+  /** Two-letter country code */
+  country: string;
+  /** Account email */
+  email?: string;
+  /** Business type */
+  business_type?: 'individual' | 'company' | 'non_profit' | 'government_entity';
+  /** Custom metadata key-value pairs */
+  metadata?: Record<string, string>;
+  /** Requested capabilities */
+  capabilities?: {
+    card_payments?: { requested: boolean };
+    transfers?: { requested: boolean };
+  };
+}
+
+/**
+ * Input for creating an account onboarding link
+ */
+export interface CreateAccountLinkInput {
+  /** Connected account ID */
+  account: string;
+  /** URL to redirect if the link expires */
+  refresh_url: string;
+  /** URL to redirect after onboarding */
+  return_url: string;
+  /** Link type */
+  type?: 'account_onboarding' | 'account_update';
+}
+
+/**
+ * Options for listing connected accounts
+ */
+export interface ConnectListOptions {
+  /** Maximum number of items to return */
+  limit?: number;
+  /** Cursor for pagination (ID to start after) */
+  starting_after?: string;
+  /** Cursor for pagination (ID to end before) */
+  ending_before?: string;
+}
+
+/**
  * Options for listing resources
  */
 export interface ListOptions {

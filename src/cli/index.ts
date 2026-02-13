@@ -5,13 +5,14 @@ import chalk from 'chalk';
 import { setupCommand } from './commands/setup.js';
 import { productsCommand } from './commands/products.js';
 import { pricesCommand } from './commands/prices.js';
+import { connectCommand } from './commands/connect.js';
 
 const program = new Command();
 
 program
   .name('stripeconf')
-  .description('CLI tool for managing Stripe products and prices')
-  .version('1.0.0');
+  .description('CLI tool for managing Stripe products, prices, and Connect accounts')
+  .version('2.0.0');
 
 // Setup command
 program
@@ -46,6 +47,19 @@ program
   .action(async () => {
     try {
       await pricesCommand();
+    } catch (error: any) {
+      console.error(chalk.red('Error:'), error.message);
+      process.exit(1);
+    }
+  });
+
+// Connect command
+program
+  .command('connect')
+  .description('Manage Stripe Connect accounts')
+  .action(async () => {
+    try {
+      await connectCommand();
     } catch (error: any) {
       console.error(chalk.red('Error:'), error.message);
       process.exit(1);

@@ -7,6 +7,9 @@ import type {
   UpdatePriceInput,
   ListOptions,
   PriceListOptions,
+  CreateConnectAccountInput,
+  CreateAccountLinkInput,
+  ConnectListOptions,
 } from './types.js';
 import { StripeClientError } from './types.js';
 
@@ -200,5 +203,75 @@ export class StripeClient {
    */
   async archivePrice(priceId: string): Promise<Stripe.Price> {
     return this.updatePrice(priceId, { active: false });
+  }
+
+  // ==================== Connect Operations ====================
+
+  /**
+   * Create a new connected account
+   */
+  async createConnectAccount(
+    input: CreateConnectAccountInput
+  ): Promise<Stripe.Account> {
+    try {
+      const account = await this.stripe.accounts.create(input);
+      return account;
+    } catch (error) {
+      this.handleStripeError(error);
+    }
+  }
+
+  /**
+   * Create an account onboarding or update link
+   */
+  async createAccountLink(
+    input: CreateAccountLinkInput
+  ): Promise<Stripe.AccountLink> {
+    try {
+      const params: Stripe.AccountLinkCreateParams = {
+        account: input.account,
+        refresh_url: input.refresh_url,
+        return_url: input.return_url,
+        type: input.type || 'account_onboarding',
+      };
+      const link = await this.stripe.accountLinks.create(params);
+      return link;
+    } catch (error) {
+      this.handleStripeError(error);
+    }
+  }
+
+  /**
+   * Retrieve a connected account by ID
+   */
+  async getConnectAccount(accountId: string): Promise<Stripe.Account> {
+    try {
+      const account = await this.stripe.accounts.retrieve(accountId);
+      return account;
+    } catch (error) {
+      this.handleStripeError(error);
+    }
+  }
+
+  /**
+   * List connected accounts
+   */
+  async listConnectAccounts(
+    options?: ConnectListOptions
+  ): Promise<Stripe.Account[]> {
+    try {
+      const params: Stripe.AccountListParams = {
+        limit: options?.limit || 20,
+        ...(options?.starting_after && {
+          starting_after: options.starting_after,
+        }),
+        ...(options?.ending_before && { ending_before: options.ending_before }),
+      };
+
+      const response = await this.stripe.accounts.list(params);
+      return response.data;
+    } catch (error) {
+      this.handleStripeError(error);
+    }
   }
 }
