@@ -28,6 +28,9 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",
+    "version:patch": "pnpm version patch --no-git-tag-version",
+    "version:minor": "pnpm version minor --no-git-tag-version",
+    "version:major": "pnpm version major --no-git-tag-version",
     "prepublishOnly": "pnpm test && pnpm build"
   },
   "keywords": [
@@ -35,6 +38,7 @@
     "cli",
     "products",
     "prices",
+    "connect",
     "configuration",
     "management"
   ],
