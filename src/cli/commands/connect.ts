@@ -100,6 +100,7 @@ export async function connectCommand(): Promise<void> {
       name: 'operation',
       message: 'What would you like to do?',
       choices: [
+        { name: 'Get started with Connect', value: 'start' },
         { name: 'Create connected account', value: 'create' },
         { name: 'Generate onboarding link', value: 'link' },
         { name: 'View account details', value: 'get' },
@@ -109,6 +110,9 @@ export async function connectCommand(): Promise<void> {
   ]);
 
   switch (operation) {
+    case 'start':
+      await startConnect(stripeClient, project);
+      break;
     case 'create':
       await createAccount(stripeClient);
       break;
@@ -117,6 +121,137 @@ export async function connectCommand(): Promise<void> {
       break;
     case 'get':
       await getAccount(stripeClient);
+      break;
+    case 'list':
+      await listAccounts(stripeClient);
+      break;
+  }
+}
+
+async function startConnect(stripeClient: StripeClient, project: ProjectConfig): Promise<void> {
+  console.log(chalk.bold('\n--- Stripe Connect Setup ---\n'));
+
+  // Step 1: Retrieve platform account
+  const spinner = ora('Checking your Stripe platform account...').start();
+
+  let platform;
+  try {
+    platform = await stripeClient.getPlatformAccount();
+    spinner.succeed('Platform account found');
+  } catch (error: any) {
+    spinner.fail('Failed to retrieve platform account');
+    console.log(chalk.red('\n  Could not access your Stripe account.'));
+    console.log(chalk.yellow('  Check that your API key is correct in your project config.\n'));
+    throw error;
+  }
+
+  // Step 2: Show platform details
+  const businessName = platform.business_profile?.name
+    || platform.settings?.dashboard?.display_name
+    || 'Not set';
+
+  console.log(chalk.bold('\n  Platform Account:\n'));
+  console.log(chalk.bold('  Account ID:'), platform.id);
+  console.log(chalk.bold('  Business Name:'), businessName);
+  console.log(chalk.bold('  Country:'), platform.country || 'N/A');
+  if (platform.email) {
+    console.log(chalk.bold('  Email:'), platform.email);
+  }
+  console.log(chalk.bold('  Environment:'), project.environment);
+  console.log(chalk.bold('  Charges Enabled:'), platform.charges_enabled ? 'Yes' : 'No');
+  console.log(chalk.bold('  Payouts Enabled:'), platform.payouts_enabled ? 'Yes' : 'No');
+  console.log();
+
+  // Step 3: Check Connect readiness
+  let connectReady = false;
+  const checkSpinner = ora('Checking Connect access...').start();
+  try {
+    await stripeClient.listConnectAccounts({ limit: 1 });
+    checkSpinner.succeed('Connect is enabled on this account');
+    connectReady = true;
+  } catch {
+    checkSpinner.fail('Connect does not appear to be enabled');
+  }
+
+  if (!connectReady) {
+    console.log(chalk.bold.yellow('\n  Connect is not enabled yet. Follow these steps:\n'));
+    console.log(chalk.white('  1. Log in to your Stripe Dashboard:'));
+    console.log(chalk.cyan('     https://dashboard.stripe.com/settings/connect\n'));
+    console.log(chalk.white('  2. Click "Get started with Connect"'));
+    console.log(chalk.white('  3. Choose your platform type (most common: "marketplace" or "platform")'));
+    console.log(chalk.white('  4. Select the account types you want to support:'));
+    console.log(chalk.gray('     - Express (recommended) — Stripe handles onboarding UI'));
+    console.log(chalk.gray('     - Standard — merchants use their own Stripe Dashboard'));
+    console.log(chalk.gray('     - Custom — you build the entire onboarding flow\n'));
+    console.log(chalk.white('  5. Complete the platform profile (business details, branding)'));
+    console.log(chalk.white('  6. Once enabled, come back and run this command again.\n'));
+
+    const { openDashboard } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'openDashboard',
+        message: 'Would you like to see the Connect settings URL?',
+        default: true,
+      },
+    ]);
+
+    if (openDashboard) {
+      const url = project.environment === 'test'
+        ? 'https://dashboard.stripe.com/test/settings/connect'
+        : 'https://dashboard.stripe.com/settings/connect';
+      console.log(chalk.cyan(`\n  Open this URL in your browser:\n  ${url}\n`));
+    }
+    return;
+  }
+
+  // Step 4: Connect is enabled — show status summary
+  const accountsSpinner = ora('Counting connected accounts...').start();
+  let accounts: Awaited<ReturnType<typeof stripeClient.listConnectAccounts>> = [];
+  try {
+    accounts = await stripeClient.listConnectAccounts({ limit: 100 });
+    accountsSpinner.stop();
+  } catch {
+    accountsSpinner.stop();
+  }
+
+  console.log(chalk.bold.green('\n  Connect is ready!\n'));
+  console.log(chalk.bold('  Platform:'), businessName);
+  console.log(chalk.bold('  Account ID:'), platform.id);
+  console.log(chalk.bold('  Connected Accounts:'), accounts.length);
+  console.log();
+
+  if (accounts.length === 0) {
+    console.log(chalk.gray('  No connected accounts yet. You can create one with:'));
+    console.log(chalk.cyan('  stripeconf connect → Create connected account\n'));
+  } else {
+    console.log(chalk.gray('  Recent connected accounts:'));
+    accounts.slice(0, 5).forEach((a) => {
+      const status = a.charges_enabled ? chalk.green('active') : chalk.yellow('pending');
+      console.log(chalk.gray(`    ${a.id} (${a.type || 'unknown'}) — ${status}`));
+    });
+    if (accounts.length > 5) {
+      console.log(chalk.gray(`    ... and ${accounts.length - 5} more`));
+    }
+    console.log();
+  }
+
+  // Step 5: Offer next action
+  const { nextAction } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'nextAction',
+      message: 'What would you like to do next?',
+      choices: [
+        { name: 'Create a connected account', value: 'create' },
+        { name: 'List all connected accounts', value: 'list' },
+        { name: 'Done — exit', value: 'exit' },
+      ],
+    },
+  ]);
+
+  switch (nextAction) {
+    case 'create':
+      await createAccount(stripeClient);
       break;
     case 'list':
       await listAccounts(stripeClient);

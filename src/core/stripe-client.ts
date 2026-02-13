@@ -208,6 +208,18 @@ export class StripeClient {
   // ==================== Connect Operations ====================
 
   /**
+   * Retrieve the platform's own account (no ID = your account)
+   */
+  async getPlatformAccount(): Promise<Stripe.Account> {
+    try {
+      const account = await this.stripe.accounts.retrieve();
+      return account;
+    } catch (error) {
+      this.handleStripeError(error);
+    }
+  }
+
+  /**
    * Create a new connected account
    */
   async createConnectAccount(

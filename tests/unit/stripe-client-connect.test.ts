@@ -58,6 +58,41 @@ describe('StripeClient - Connect Operations', () => {
     stripeClient = new StripeClient(mockProject);
   });
 
+  describe('getPlatformAccount', () => {
+    it('should retrieve the platform own account', async () => {
+      const mockPlatform = {
+        id: 'acct_platform_123',
+        country: 'US',
+        email: 'platform@example.com',
+        charges_enabled: true,
+        payouts_enabled: true,
+        details_submitted: true,
+        business_profile: {
+          name: 'Profullstack, Inc.',
+        },
+      };
+
+      mockAccountsRetrieve.mockResolvedValue(mockPlatform);
+
+      const result = await stripeClient.getPlatformAccount();
+
+      expect(result).toEqual(mockPlatform);
+      expect(mockAccountsRetrieve).toHaveBeenCalledWith();
+    });
+
+    it('should handle invalid API key on platform retrieve', async () => {
+      const stripeError = new Error('Invalid API Key provided');
+      (stripeError as any).statusCode = 401;
+      (stripeError as any).code = 'authentication_error';
+
+      mockAccountsRetrieve.mockRejectedValue(stripeError);
+
+      await expect(
+        stripeClient.getPlatformAccount()
+      ).rejects.toThrow(StripeClientError);
+    });
+  });
+
   describe('createConnectAccount', () => {
     it('should create an express connected account', async () => {
       const mockAccount = {
