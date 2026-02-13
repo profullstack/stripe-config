@@ -1,6 +1,6 @@
 {
   "name": "@profullstack/stripe-config",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "CLI tool and ESM module for managing Stripe products, prices, and Connect accounts across multiple projects",
   "type": "module",
   "main": "./dist/index.js",

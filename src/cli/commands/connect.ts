@@ -100,13 +100,13 @@ export async function connectCommand(): Promise<void> {
       name: 'operation',
       message: 'What would you like to do?',
       choices: [
-        { name: 'Get started with Connect', value: 'start' },
-        { name: 'Full setup (account + webhook + env vars)', value: 'full-setup' },
-        { name: 'Create connected account', value: 'create' },
+        { name: 'Full platform setup (branding + webhook + env vars)', value: 'full-setup' },
+        { name: 'Check Connect status', value: 'start' },
+        { name: 'Create merchant account', value: 'create' },
         { name: 'Create webhook endpoint', value: 'webhook' },
         { name: 'Generate onboarding link', value: 'link' },
         { name: 'View account details', value: 'get' },
-        { name: 'List connected accounts', value: 'list' },
+        { name: 'List merchant accounts', value: 'list' },
       ],
     },
   ]);
@@ -301,14 +301,18 @@ async function startConnect(stripeClient: StripeClient, project: ProjectConfig, 
 }
 
 async function fullSetup(stripeClient: StripeClient, project: ProjectConfig, configManager: ConfigManager): Promise<void> {
-  console.log(chalk.bold('\n--- Full Connect Setup Wizard ---\n'));
+  console.log(chalk.bold('\n--- Stripe Connect Platform Setup ---\n'));
+  console.log(chalk.gray('  This wizard walks you through setting up your platform'));
+  console.log(chalk.gray('  for Stripe Connect. Your platform account is the hub —'));
+  console.log(chalk.gray('  connected merchant accounts are created separately.\n'));
 
   // Step 1: Org ID
+  console.log(chalk.bold('  Step 1: Organization ID\n'));
+
   if (project.orgId) {
-    console.log(chalk.gray(`  Stripe Org ID: ${project.orgId}`));
+    console.log(chalk.green(`  ✓ Org ID: ${project.orgId}\n`));
   } else {
-    console.log(chalk.white('  First, let\'s set your Stripe organization ID.'));
-    console.log(chalk.white('  Find it at: Settings → Organization'));
+    console.log(chalk.white('  Find your org ID at: Settings → Organization'));
     console.log(chalk.cyan('  https://dashboard.stripe.com/settings/organization\n'));
 
     const { orgId } = await inquirer.prompt([
@@ -331,74 +335,93 @@ async function fullSetup(stripeClient: StripeClient, project: ProjectConfig, con
     }
   }
 
-  // Step 2: Create sub-account
-  console.log(chalk.bold('\n  Step 1: Create Connected Account\n'));
+  // Step 2: Verify platform account + Connect status
+  console.log(chalk.bold('  Step 2: Verify Platform Account\n'));
 
-  const accountAnswers = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'name',
-      message: 'Sub-account name (e.g., CoinPay):',
-      validate: (input: string) => input.trim() ? true : 'Name is required',
-    },
-    {
-      type: 'list',
-      name: 'type',
-      message: 'Account type:',
-      choices: [
-        { name: 'Express (recommended)', value: 'express' },
-        { name: 'Standard', value: 'standard' },
-        { name: 'Custom', value: 'custom' },
-      ],
-    },
-    {
-      type: 'input',
-      name: 'country',
-      message: 'Country (2-letter code):',
-      default: 'US',
-      validate: (input: string) => {
-        if (!input.trim()) return 'Country is required';
-        if (input.trim().length !== 2) return 'Must be a 2-letter country code';
-        return true;
-      },
-    },
-    {
-      type: 'input',
-      name: 'email',
-      message: 'Account email (optional):',
-    },
-  ]);
-
-  const accountSpinner = ora('Creating connected account...').start();
-
-  let account;
+  const platformSpinner = ora('Checking platform account...').start();
+  let platform;
   try {
-    account = await stripeClient.createConnectAccount({
-      type: accountAnswers.type,
-      country: accountAnswers.country.toUpperCase(),
-      ...(accountAnswers.email && { email: accountAnswers.email }),
-      capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true },
-      },
-      metadata: {
-        name: accountAnswers.name,
-        ...(project.orgId && { org_id: project.orgId }),
-      },
-    });
-    accountSpinner.succeed(`Connected account created: ${account.id}`);
+    platform = await stripeClient.getPlatformAccount();
+    platformSpinner.succeed('Platform account verified');
   } catch (error: any) {
-    accountSpinner.fail('Failed to create connected account');
+    platformSpinner.fail('Failed to access platform account');
+    console.log(chalk.red('\n  Check your API keys in the project config.\n'));
     throw error;
   }
 
-  // Step 3: Create webhook endpoint
-  console.log(chalk.bold('\n  Step 2: Create Webhook Endpoint\n'));
+  const businessName = platform.business_profile?.name
+    || platform.settings?.dashboard?.display_name
+    || 'Not set';
 
-  const webhookAnswers = await inquirer.prompt([
+  console.log(chalk.gray(`    Account: ${platform.id}`));
+  console.log(chalk.gray(`    Business: ${businessName}`));
+  console.log(chalk.gray(`    Country: ${platform.country || 'N/A'}`));
+
+  // Check Connect is enabled
+  const connectSpinner = ora('Checking Connect access...').start();
+  let connectReady = false;
+  try {
+    await stripeClient.listConnectAccounts({ limit: 1 });
+    connectSpinner.succeed('Connect is enabled');
+    connectReady = true;
+  } catch {
+    connectSpinner.fail('Connect is not enabled');
+  }
+
+  if (!connectReady) {
+    console.log(chalk.bold.yellow('\n  Connect must be enabled before continuing:\n'));
+    console.log(chalk.white('  1. Go to Stripe Dashboard → Connect (left sidebar)'));
+    console.log(chalk.white('  2. Click "Get started with Connect"'));
+    console.log(chalk.white('  3. Choose platform type (marketplace or platform)'));
+    console.log(chalk.white('  4. Select Express accounts (recommended)'));
+    console.log(chalk.white('  5. Complete platform profile\n'));
+
+    const dashUrl = project.environment === 'test'
+      ? 'https://dashboard.stripe.com/test/settings/connect'
+      : 'https://dashboard.stripe.com/settings/connect';
+    console.log(chalk.cyan(`  Open: ${dashUrl}\n`));
+    console.log(chalk.gray('  Run this command again after enabling Connect.\n'));
+    return;
+  }
+
+  // Step 3: Platform branding guidance
+  console.log(chalk.bold('\n  Step 3: Platform Branding (Dashboard)\n'));
+  console.log(chalk.gray('  Configure your platform branding in the Stripe Dashboard.'));
+  console.log(chalk.gray('  This is what merchants see during onboarding.\n'));
+
+  const connectSettingsUrl = project.environment === 'test'
+    ? 'https://dashboard.stripe.com/test/settings/connect'
+    : 'https://dashboard.stripe.com/settings/connect';
+
+  console.log(chalk.white('  Checklist:'));
+  console.log(chalk.white('  [ ] Set platform display name (e.g., CoinPay)'));
+  console.log(chalk.white('  [ ] Upload platform logo'));
+  console.log(chalk.white('  [ ] Set brand color'));
+  console.log(chalk.white('  [ ] Enable Express accounts'));
+  console.log(chalk.white('  [ ] Set capabilities: card_payments + transfers'));
+  console.log(chalk.white('  [ ] Configure payout schedule (e.g., daily, 2-day rolling)\n'));
+  console.log(chalk.cyan(`  Dashboard: ${connectSettingsUrl}\n`));
+
+  const { brandingDone } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'brandingDone',
+      message: 'Have you configured platform branding? (you can do this later)',
+      default: true,
+    },
+  ]);
+
+  if (!brandingDone) {
+    console.log(chalk.yellow('  No problem — you can configure branding anytime.\n'));
+  }
+
+  // Step 4: Create webhook endpoint
+  console.log(chalk.bold('\n  Step 4: Create Webhook Endpoint\n'));
+
+  const { webhookUrl } = await inquirer.prompt([
     {
       type: 'input',
-      name: 'url',
+      name: 'webhookUrl',
       message: 'Webhook URL (e.g., https://yourapp.com/api/stripe/webhooks):',
       validate: (input: string) => {
         if (!input.trim()) return 'URL is required';
@@ -410,61 +433,81 @@ async function fullSetup(stripeClient: StripeClient, project: ProjectConfig, con
         }
       },
     },
+  ]);
+
+  const { events } = await inquirer.prompt([
     {
       type: 'checkbox',
       name: 'events',
       message: 'Events to listen for:',
       choices: [
-        { name: 'checkout.session.completed', checked: true },
+        new inquirer.Separator('--- Payments ---'),
         { name: 'payment_intent.succeeded', checked: true },
         { name: 'payment_intent.payment_failed', checked: true },
-        { name: 'customer.subscription.created', checked: true },
-        { name: 'customer.subscription.updated', checked: true },
-        { name: 'customer.subscription.deleted', checked: true },
-        { name: 'invoice.paid', checked: true },
-        { name: 'invoice.payment_failed', checked: true },
-        { name: 'account.updated (Connect)', value: 'account.updated', checked: true },
+        { name: 'checkout.session.completed', checked: true },
+        new inquirer.Separator('--- Connect ---'),
+        { name: 'account.updated', checked: true },
+        new inquirer.Separator('--- Disputes & Refunds ---'),
+        { name: 'charge.dispute.created', checked: true },
+        { name: 'charge.dispute.closed', checked: true },
+        { name: 'charge.refunded', checked: true },
+        new inquirer.Separator('--- Payouts ---'),
+        { name: 'payout.paid', checked: true },
+        { name: 'payout.failed', checked: true },
+        new inquirer.Separator('--- Subscriptions ---'),
+        { name: 'customer.subscription.created', checked: false },
+        { name: 'customer.subscription.updated', checked: false },
+        { name: 'customer.subscription.deleted', checked: false },
+        { name: 'invoice.paid', checked: false },
+        { name: 'invoice.payment_failed', checked: false },
+        new inquirer.Separator('---'),
         { name: 'All events (*)', value: '*' },
       ],
     },
   ]);
 
-  const events = webhookAnswers.events.includes('*')
-    ? ['*']
-    : webhookAnswers.events;
+  const selectedEvents = events.includes('*') ? ['*'] : events;
 
-  const webhookSpinner = ora('Creating webhook endpoint...').start();
-
-  let webhook;
-  try {
-    webhook = await stripeClient.createWebhookEndpoint({
-      url: webhookAnswers.url,
-      enabled_events: events,
-      description: `Webhook for ${accountAnswers.name}`,
-      metadata: {
-        account_name: accountAnswers.name,
-        connected_account: account.id,
-      },
-    });
-    webhookSpinner.succeed('Webhook endpoint created');
-  } catch (error: any) {
-    webhookSpinner.fail('Failed to create webhook endpoint');
-    throw error;
+  if (selectedEvents.length === 0) {
+    console.log(chalk.yellow('  No events selected — skipping webhook creation.\n'));
   }
 
-  // Step 4: Output env vars
-  console.log(chalk.bold.green('\n  ✓ Setup Complete!\n'));
-  console.log(chalk.bold('  Connected Account:'));
-  console.log(chalk.gray(`    ID: ${account.id}`));
-  console.log(chalk.gray(`    Type: ${account.type}`));
-  console.log(chalk.gray(`    Name: ${accountAnswers.name}`));
+  let webhook;
+  if (selectedEvents.length > 0) {
+    const webhookSpinner = ora('Creating webhook endpoint...').start();
+
+    try {
+      webhook = await stripeClient.createWebhookEndpoint({
+        url: webhookUrl,
+        enabled_events: selectedEvents,
+        description: `Platform webhook for ${businessName}`,
+        metadata: {
+          platform: businessName,
+          ...(project.orgId && { org_id: project.orgId }),
+        },
+      });
+      webhookSpinner.succeed('Webhook endpoint created');
+    } catch (error: any) {
+      webhookSpinner.fail('Failed to create webhook endpoint');
+      throw error;
+    }
+  }
+
+  // Step 5: Output env vars
+  console.log(chalk.bold.green('\n  ✓ Platform Setup Complete!\n'));
+
+  console.log(chalk.bold('  Platform Account:'));
+  console.log(chalk.gray(`    Account ID: ${platform.id}`));
+  console.log(chalk.gray(`    Business: ${businessName}`));
   if (project.orgId) {
     console.log(chalk.gray(`    Org ID: ${project.orgId}`));
   }
 
-  console.log(chalk.bold('\n  Webhook Endpoint:'));
-  console.log(chalk.gray(`    ID: ${webhook.id}`));
-  console.log(chalk.gray(`    URL: ${webhook.url}`));
+  if (webhook) {
+    console.log(chalk.bold('\n  Webhook Endpoint:'));
+    console.log(chalk.gray(`    ID: ${webhook.id}`));
+    console.log(chalk.gray(`    URL: ${webhook.url}`));
+  }
 
   console.log(chalk.bold.yellow('\n  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
   console.log(chalk.bold.yellow('  Add these to your production .env file:'));
@@ -472,8 +515,9 @@ async function fullSetup(stripeClient: StripeClient, project: ProjectConfig, con
   console.log(`  STRIPE_SECRET_KEY=${project.secretKey}`);
   console.log(`  STRIPE_PUBLISHABLE_KEY=${project.publishableKey}`);
   console.log(`  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${project.publishableKey}`);
-  console.log(`  STRIPE_WEBHOOK_SECRET=${webhook.secret}`);
-  console.log(`  STRIPE_CONNECTED_ACCOUNT_ID=${account.id}`);
+  if (webhook) {
+    console.log(`  STRIPE_WEBHOOK_SECRET=${webhook.secret}`);
+  }
   if (project.orgId) {
     console.log(`  STRIPE_ORG_ID=${project.orgId}`);
   }
@@ -482,31 +526,50 @@ async function fullSetup(stripeClient: StripeClient, project: ProjectConfig, con
 
   console.log(chalk.bold('  Next steps:'));
   console.log(chalk.white('  1. Add the env vars above to your production .env'));
-  console.log(chalk.white(`  2. Verify webhook endpoint is receiving events at ${webhookAnswers.url}`));
-  console.log(chalk.white('  3. Generate an onboarding link to complete account setup:'));
+  if (webhook) {
+    console.log(chalk.white(`  2. Configure your app to handle webhooks at ${webhookUrl}`));
+  }
+  console.log(chalk.white(`  ${webhook ? '3' : '2'}. Create your first merchant account:`));
+  console.log(chalk.cyan('     stripeconf connect → Create merchant account'));
+  console.log(chalk.white(`  ${webhook ? '4' : '3'}. Generate an onboarding link for the merchant:`));
   console.log(chalk.cyan('     stripeconf connect → Generate onboarding link\n'));
 
+  // Offer to create first merchant now
+  const { createMerchant } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'createMerchant',
+      message: 'Create your first merchant account now?',
+      default: true,
+    },
+  ]);
+
+  if (createMerchant) {
+    await createAccount(stripeClient);
+  }
+
   // Output JSON for scripting
-  console.log(chalk.bold('  JSON:'));
+  console.log(chalk.bold('\n  JSON:'));
   console.log(JSON.stringify({
-    connected_account: {
-      id: account.id,
-      type: account.type,
-      country: account.country,
-      name: accountAnswers.name,
+    platform: {
+      id: platform.id,
+      business: businessName,
+      country: platform.country,
+      ...(project.orgId && { org_id: project.orgId }),
     },
-    webhook: {
-      id: webhook.id,
-      url: webhook.url,
-      secret: webhook.secret,
-      events: events,
-    },
+    ...(webhook && {
+      webhook: {
+        id: webhook.id,
+        url: webhook.url,
+        secret: webhook.secret,
+        events: selectedEvents,
+      },
+    }),
     env: {
       STRIPE_SECRET_KEY: project.secretKey,
       STRIPE_PUBLISHABLE_KEY: project.publishableKey,
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: project.publishableKey,
-      STRIPE_WEBHOOK_SECRET: webhook.secret,
-      STRIPE_CONNECTED_ACCOUNT_ID: account.id,
+      ...(webhook && { STRIPE_WEBHOOK_SECRET: webhook.secret }),
       ...(project.orgId && { STRIPE_ORG_ID: project.orgId }),
     },
   }, null, 2));
@@ -536,15 +599,26 @@ async function createWebhook(stripeClient: StripeClient): Promise<void> {
       name: 'events',
       message: 'Events to listen for:',
       choices: [
-        { name: 'checkout.session.completed', checked: true },
+        new inquirer.Separator('--- Payments ---'),
         { name: 'payment_intent.succeeded', checked: true },
         { name: 'payment_intent.payment_failed', checked: true },
-        { name: 'customer.subscription.created', checked: true },
-        { name: 'customer.subscription.updated', checked: true },
-        { name: 'customer.subscription.deleted', checked: true },
-        { name: 'invoice.paid', checked: true },
-        { name: 'invoice.payment_failed', checked: true },
-        { name: 'account.updated (Connect)', value: 'account.updated', checked: true },
+        { name: 'checkout.session.completed', checked: true },
+        new inquirer.Separator('--- Connect ---'),
+        { name: 'account.updated', checked: true },
+        new inquirer.Separator('--- Disputes & Refunds ---'),
+        { name: 'charge.dispute.created', checked: true },
+        { name: 'charge.dispute.closed', checked: true },
+        { name: 'charge.refunded', checked: true },
+        new inquirer.Separator('--- Payouts ---'),
+        { name: 'payout.paid', checked: true },
+        { name: 'payout.failed', checked: true },
+        new inquirer.Separator('--- Subscriptions ---'),
+        { name: 'customer.subscription.created', checked: false },
+        { name: 'customer.subscription.updated', checked: false },
+        { name: 'customer.subscription.deleted', checked: false },
+        { name: 'invoice.paid', checked: false },
+        { name: 'invoice.payment_failed', checked: false },
+        new inquirer.Separator('---'),
         { name: 'All events (*)', value: '*' },
       ],
     },
