@@ -64,17 +64,44 @@ async function pickAccount(stripeClient: StripeClient, action: string): Promise<
 async function inlineSetup(configManager: ConfigManager): Promise<ProjectConfig> {
   console.log(chalk.bold('  No project configured yet. Let\'s set one up.\n'));
 
+  console.log(chalk.bold.yellow('  Before you begin, make sure you have:\n'));
+  console.log(chalk.white('  1. Created a Stripe account for your platform (e.g., CoinPay)'));
+  console.log(chalk.gray('     Dashboard → top-left account switcher → "New account"'));
+  console.log(chalk.gray('     (Skip if using your existing Stripe account)\n'));
+  console.log(chalk.white('  2. Copied the API keys from that account'));
+  console.log(chalk.gray('     Dashboard → Developers → API keys'));
+  console.log(chalk.gray('     You need: Secret key (sk_live_...) and Publishable key (pk_live_...)\n'));
+  console.log(chalk.white('  3. (Optional) Your organization ID'));
+  console.log(chalk.gray('     Dashboard → Settings → Organization (org_...)\n'));
+
+  const { ready } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'ready',
+      message: 'Do you have your API keys ready?',
+      default: true,
+    },
+  ]);
+
+  if (!ready) {
+    console.log(chalk.cyan('\n  Get your keys at: https://dashboard.stripe.com/apikeys'));
+    console.log(chalk.gray('  Run this command again when you have them.\n'));
+    throw new Error('Setup cancelled — API keys not ready.');
+  }
+
+  console.log();
+
   const answers = await inquirer.prompt([
     {
       type: 'input',
       name: 'name',
-      message: 'Project name:',
+      message: 'Project name (e.g., CoinPay):',
       validate: (input: string) => input.trim() ? true : 'Project name is required',
     },
     {
       type: 'input',
       name: 'orgId',
-      message: 'Stripe organization ID (org_...):',
+      message: 'Stripe organization ID (org_... or Enter to skip):',
       validate: (input: string) => {
         if (!input.trim()) return true;
         if (!input.startsWith('org_')) return 'Org ID must start with org_';
@@ -94,20 +121,20 @@ async function inlineSetup(configManager: ConfigManager): Promise<ProjectConfig>
     {
       type: 'password',
       name: 'secretKey',
-      message: 'Secret key (sk_...):',
+      message: 'Secret key (sk_live_... or sk_test_...):',
       validate: (input: string) => {
         if (!input.trim()) return 'Secret key is required';
-        if (!input.startsWith('sk_')) return 'Invalid secret key format (should start with sk_)';
+        if (!input.startsWith('sk_')) return 'Must start with sk_ (find it at Dashboard → Developers → API keys)';
         return true;
       },
     },
     {
       type: 'password',
       name: 'publishableKey',
-      message: 'Publishable key (pk_...):',
+      message: 'Publishable key (pk_live_... or pk_test_...):',
       validate: (input: string) => {
         if (!input.trim()) return 'Publishable key is required';
-        if (!input.startsWith('pk_')) return 'Invalid publishable key format (should start with pk_)';
+        if (!input.startsWith('pk_')) return 'Must start with pk_ (find it at Dashboard → Developers → API keys)';
         return true;
       },
     },
@@ -396,9 +423,15 @@ async function startConnect(stripeClient: StripeClient, project: ProjectConfig, 
 
 async function fullSetup(stripeClient: StripeClient, project: ProjectConfig, configManager: ConfigManager): Promise<void> {
   console.log(chalk.bold('\n--- Stripe Connect Platform Setup ---\n'));
-  console.log(chalk.gray('  This wizard walks you through setting up your platform'));
-  console.log(chalk.gray('  for Stripe Connect. Your platform account is the hub —'));
-  console.log(chalk.gray('  connected merchant accounts are created separately.\n'));
+  console.log(chalk.gray('  This wizard configures your Stripe account as a Connect platform.'));
+  console.log(chalk.gray('  Your platform account (e.g., CoinPay) is the hub that manages'));
+  console.log(chalk.gray('  merchant Express accounts created via your web app.\n'));
+  console.log(chalk.gray('  Prerequisites (manual, in Stripe Dashboard):'));
+  console.log(chalk.gray('    1. Create a Stripe account for your platform'));
+  console.log(chalk.gray('    2. Get API keys (Developers → API keys) — already done'));
+  console.log(chalk.gray('    3. Enable Connect (Connect → Get started)\n'));
+  console.log(chalk.gray('  This wizard handles everything else: org ID, verification,'));
+  console.log(chalk.gray('  branding checklist, webhook creation, and env var output.\n'));
 
   // Step 1: Org ID
   console.log(chalk.bold('  Step 1: Organization ID\n'));
