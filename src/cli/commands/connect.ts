@@ -58,6 +58,103 @@ async function pickAccount(stripeClient: StripeClient, action: string): Promise<
 }
 
 /**
+ * Inline project setup for Connect — collects API keys + org ID without
+ * requiring `stripeconf setup` first.
+ */
+async function inlineSetup(configManager: ConfigManager): Promise<ProjectConfig> {
+  console.log(chalk.bold('  No project configured yet. Let\'s set one up.\n'));
+
+  const answers = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'name',
+      message: 'Project name:',
+      validate: (input: string) => input.trim() ? true : 'Project name is required',
+    },
+    {
+      type: 'input',
+      name: 'orgId',
+      message: 'Stripe organization ID (org_...):',
+      validate: (input: string) => {
+        if (!input.trim()) return true;
+        if (!input.startsWith('org_')) return 'Org ID must start with org_';
+        return true;
+      },
+    },
+    {
+      type: 'list',
+      name: 'environment',
+      message: 'Environment:',
+      choices: [
+        { name: 'Test', value: 'test' },
+        { name: 'Live', value: 'live' },
+      ],
+      default: 'test',
+    },
+    {
+      type: 'password',
+      name: 'secretKey',
+      message: 'Secret key (sk_...):',
+      validate: (input: string) => {
+        if (!input.trim()) return 'Secret key is required';
+        if (!input.startsWith('sk_')) return 'Invalid secret key format (should start with sk_)';
+        return true;
+      },
+    },
+    {
+      type: 'password',
+      name: 'publishableKey',
+      message: 'Publishable key (pk_...):',
+      validate: (input: string) => {
+        if (!input.trim()) return 'Publishable key is required';
+        if (!input.startsWith('pk_')) return 'Invalid publishable key format (should start with pk_)';
+        return true;
+      },
+    },
+    {
+      type: 'input',
+      name: 'defaultCurrency',
+      message: 'Default currency:',
+      default: 'usd',
+      validate: (input: string) => {
+        if (!input.trim()) return 'Currency is required';
+        if (input.length !== 3) return 'Currency must be a 3-letter ISO code (e.g., usd, eur)';
+        return true;
+      },
+    },
+  ]);
+
+  // Validate API keys
+  const spinner = ora('Validating API keys...').start();
+  try {
+    const testClient = new StripeClient({
+      id: '', name: '', environment: answers.environment,
+      publishableKey: answers.publishableKey, secretKey: answers.secretKey,
+      defaultCurrency: answers.defaultCurrency, createdAt: '', updatedAt: '',
+    });
+    await testClient.getPlatformAccount();
+    spinner.succeed('API keys validated');
+  } catch {
+    spinner.fail('Invalid API keys');
+    throw new Error('Could not validate API keys. Check your secret key and try again.');
+  }
+
+  const saveSpinner = ora('Saving configuration...').start();
+  const project = await configManager.addProject({
+    name: answers.name,
+    environment: answers.environment,
+    publishableKey: answers.publishableKey,
+    secretKey: answers.secretKey,
+    defaultCurrency: answers.defaultCurrency.toLowerCase(),
+    ...(answers.orgId.trim() && { orgId: answers.orgId.trim() }),
+  });
+  saveSpinner.succeed('Configuration saved');
+
+  console.log(chalk.green(`\n  ✓ Project "${project.name}" created\n`));
+  return project;
+}
+
+/**
  * Connect command - Manage Stripe Connect accounts
  */
 export async function connectCommand(): Promise<void> {
@@ -66,14 +163,11 @@ export async function connectCommand(): Promise<void> {
   const configManager = new ConfigManager();
   const config = await configManager.loadConfig();
 
-  if (config.projects.length === 0) {
-    console.log(chalk.yellow('No projects configured. Run "stripeconf setup" first.'));
-    return;
-  }
-
-  // Select project
+  // If no project exists, run inline setup (no need for `stripeconf setup`)
   let project: ProjectConfig;
-  if (config.projects.length === 1) {
+  if (config.projects.length === 0) {
+    project = await inlineSetup(configManager);
+  } else if (config.projects.length === 1) {
     project = config.projects[0];
     console.log(chalk.gray(`Using project: ${project.name} (${project.environment})\n`));
   } else {
@@ -319,7 +413,7 @@ async function fullSetup(stripeClient: StripeClient, project: ProjectConfig, con
       {
         type: 'input',
         name: 'orgId',
-        message: 'Stripe organization ID (org_...):',
+        message: 'Stripe organization ID (org_... or press Enter to skip):',
         validate: (input: string) => {
           if (!input.trim()) return true;
           if (!input.startsWith('org_')) return 'Org ID must start with org_';
