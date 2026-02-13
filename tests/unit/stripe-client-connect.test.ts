@@ -8,6 +8,9 @@ const mockAccountsCreate = vi.fn();
 const mockAccountsRetrieve = vi.fn();
 const mockAccountsList = vi.fn();
 const mockAccountLinksCreate = vi.fn();
+const mockWebhookEndpointsCreate = vi.fn();
+const mockWebhookEndpointsList = vi.fn();
+const mockWebhookEndpointsDel = vi.fn();
 
 // Mock Stripe SDK
 vi.mock('stripe', () => {
@@ -33,6 +36,11 @@ vi.mock('stripe', () => {
       },
       accountLinks: {
         create: mockAccountLinksCreate,
+      },
+      webhookEndpoints: {
+        create: mockWebhookEndpointsCreate,
+        list: mockWebhookEndpointsList,
+        del: mockWebhookEndpointsDel,
       },
     })),
   };
@@ -452,6 +460,129 @@ describe('StripeClient - Connect Operations', () => {
         expect((error as StripeClientError).statusCode).toBe(429);
         expect((error as StripeClientError).code).toBe('rate_limit');
       }
+    });
+  });
+
+  describe('createWebhookEndpoint', () => {
+    it('should create a webhook endpoint with events', async () => {
+      const mockEndpoint = {
+        id: 'we_123',
+        object: 'webhook_endpoint',
+        url: 'https://example.com/api/stripe/webhooks',
+        enabled_events: ['payment_intent.succeeded', 'checkout.session.completed'],
+        secret: 'whsec_test_abc123',
+        status: 'enabled',
+      };
+
+      mockWebhookEndpointsCreate.mockResolvedValue(mockEndpoint);
+
+      const input = {
+        url: 'https://example.com/api/stripe/webhooks',
+        enabled_events: ['payment_intent.succeeded', 'checkout.session.completed'],
+      };
+
+      const result = await stripeClient.createWebhookEndpoint(input);
+
+      expect(result).toEqual(mockEndpoint);
+      expect(mockWebhookEndpointsCreate).toHaveBeenCalledWith({
+        url: 'https://example.com/api/stripe/webhooks',
+        enabled_events: ['payment_intent.succeeded', 'checkout.session.completed'],
+      });
+    });
+
+    it('should create a webhook with description and metadata', async () => {
+      const mockEndpoint = {
+        id: 'we_456',
+        object: 'webhook_endpoint',
+        url: 'https://example.com/webhooks',
+        enabled_events: ['*'],
+        secret: 'whsec_test_def456',
+        description: 'CoinPay webhook',
+        metadata: { account_name: 'CoinPay' },
+      };
+
+      mockWebhookEndpointsCreate.mockResolvedValue(mockEndpoint);
+
+      const input = {
+        url: 'https://example.com/webhooks',
+        enabled_events: ['*'],
+        description: 'CoinPay webhook',
+        metadata: { account_name: 'CoinPay' },
+      };
+
+      const result = await stripeClient.createWebhookEndpoint(input);
+
+      expect(result).toEqual(mockEndpoint);
+      expect(result.secret).toBe('whsec_test_def456');
+    });
+
+    it('should handle API errors on webhook create', async () => {
+      const stripeError = new Error('Invalid URL');
+      (stripeError as any).statusCode = 400;
+      (stripeError as any).code = 'parameter_invalid';
+
+      mockWebhookEndpointsCreate.mockRejectedValue(stripeError);
+
+      await expect(
+        stripeClient.createWebhookEndpoint({
+          url: 'not-a-url',
+          enabled_events: ['*'],
+        })
+      ).rejects.toThrow(StripeClientError);
+    });
+  });
+
+  describe('listWebhookEndpoints', () => {
+    it('should list webhook endpoints', async () => {
+      const mockResponse = {
+        data: [
+          {
+            id: 'we_123',
+            url: 'https://example.com/webhooks',
+            enabled_events: ['*'],
+            status: 'enabled',
+          },
+        ],
+        has_more: false,
+      };
+
+      mockWebhookEndpointsList.mockResolvedValue(mockResponse);
+
+      const result = await stripeClient.listWebhookEndpoints();
+
+      expect(result).toEqual(mockResponse.data);
+      expect(mockWebhookEndpointsList).toHaveBeenCalledWith({ limit: 20 });
+    });
+
+    it('should list with custom limit', async () => {
+      const mockResponse = { data: [], has_more: false };
+      mockWebhookEndpointsList.mockResolvedValue(mockResponse);
+
+      await stripeClient.listWebhookEndpoints({ limit: 5 });
+
+      expect(mockWebhookEndpointsList).toHaveBeenCalledWith({ limit: 5 });
+    });
+  });
+
+  describe('deleteWebhookEndpoint', () => {
+    it('should delete a webhook endpoint', async () => {
+      mockWebhookEndpointsDel.mockResolvedValue({ id: 'we_123', deleted: true });
+
+      await stripeClient.deleteWebhookEndpoint('we_123');
+
+      expect(mockWebhookEndpointsDel).toHaveBeenCalledWith('we_123');
+    });
+
+    it('should handle non-existent endpoint', async () => {
+      const stripeError = new Error('No such webhook endpoint');
+      (stripeError as any).statusCode = 404;
+      (stripeError as any).code = 'resource_missing';
+
+      mockWebhookEndpointsDel.mockRejectedValue(stripeError);
+
+      await expect(
+        stripeClient.deleteWebhookEndpoint('we_nonexistent')
+      ).rejects.toThrow(StripeClientError);
     });
   });
 

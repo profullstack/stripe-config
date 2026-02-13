@@ -24,6 +24,7 @@ export type {
   CreateConnectAccountInput,
   CreateAccountLinkInput,
   ConnectListOptions,
+  CreateWebhookEndpointInput,
 } from './core/types.js';
 
 // Export custom errors
@@ -165,8 +166,29 @@ export class ConnectManager {
   async list(options?: ConnectListOptions) {
     return this.stripeClient.listConnectAccounts(options);
   }
+
+  /**
+   * Create a webhook endpoint
+   */
+  async createWebhook(input: CreateWebhookEndpointInput) {
+    return this.stripeClient.createWebhookEndpoint(input);
+  }
+
+  /**
+   * List webhook endpoints
+   */
+  async listWebhooks(options?: { limit?: number }) {
+    return this.stripeClient.listWebhookEndpoints(options);
+  }
+
+  /**
+   * Delete a webhook endpoint
+   */
+  async deleteWebhook(endpointId: string) {
+    return this.stripeClient.deleteWebhookEndpoint(endpointId);
+  }
 }
 
 // Re-import types for the managers
-import type { ProjectConfig, CreateProductInput, UpdateProductInput, CreatePriceInput, UpdatePriceInput, ListOptions, PriceListOptions, CreateConnectAccountInput, CreateAccountLinkInput, ConnectListOptions } from './core/types.js';
+import type { ProjectConfig, CreateProductInput, UpdateProductInput, CreatePriceInput, UpdatePriceInput, ListOptions, PriceListOptions, CreateConnectAccountInput, CreateAccountLinkInput, ConnectListOptions, CreateWebhookEndpointInput } from './core/types.js';
 import { StripeClient } from './core/stripe-client.js';

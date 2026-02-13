@@ -213,6 +213,22 @@ export interface ConnectListOptions {
 }
 
 /**
+ * Input for creating a webhook endpoint
+ */
+export interface CreateWebhookEndpointInput {
+  /** The URL that Stripe will send events to */
+  url: string;
+  /** Events to listen for */
+  enabled_events: string[];
+  /** Optional description */
+  description?: string;
+  /** Custom metadata */
+  metadata?: Record<string, string>;
+  /** Connected account ID (for Connect webhooks) */
+  connect?: boolean;
+}
+
+/**
  * Options for listing resources
  */
 export interface ListOptions {

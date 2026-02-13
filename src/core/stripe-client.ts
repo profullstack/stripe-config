@@ -10,6 +10,7 @@ import type {
   CreateConnectAccountInput,
   CreateAccountLinkInput,
   ConnectListOptions,
+  CreateWebhookEndpointInput,
 } from './types.js';
 import { StripeClientError } from './types.js';
 
@@ -282,6 +283,58 @@ export class StripeClient {
 
       const response = await this.stripe.accounts.list(params);
       return response.data;
+    } catch (error) {
+      this.handleStripeError(error);
+    }
+  }
+
+  // ==================== Webhook Operations ====================
+
+  /**
+   * Create a webhook endpoint
+   * Returns the endpoint with its secret (whsec_...)
+   */
+  async createWebhookEndpoint(
+    input: CreateWebhookEndpointInput
+  ): Promise<Stripe.WebhookEndpoint> {
+    try {
+      const params: Stripe.WebhookEndpointCreateParams = {
+        url: input.url,
+        enabled_events: input.enabled_events as Stripe.WebhookEndpointCreateParams.EnabledEvent[],
+        ...(input.description && { description: input.description }),
+        ...(input.metadata && { metadata: input.metadata }),
+        ...(input.connect && { connect: input.connect }),
+      };
+
+      const endpoint = await this.stripe.webhookEndpoints.create(params);
+      return endpoint;
+    } catch (error) {
+      this.handleStripeError(error);
+    }
+  }
+
+  /**
+   * List webhook endpoints
+   */
+  async listWebhookEndpoints(
+    options?: { limit?: number }
+  ): Promise<Stripe.WebhookEndpoint[]> {
+    try {
+      const response = await this.stripe.webhookEndpoints.list({
+        limit: options?.limit || 20,
+      });
+      return response.data;
+    } catch (error) {
+      this.handleStripeError(error);
+    }
+  }
+
+  /**
+   * Delete a webhook endpoint
+   */
+  async deleteWebhookEndpoint(endpointId: string): Promise<void> {
+    try {
+      await this.stripe.webhookEndpoints.del(endpointId);
     } catch (error) {
       this.handleStripeError(error);
     }
