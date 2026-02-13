@@ -20,6 +20,8 @@ export interface ProjectConfig {
   webhookSecret?: string;
   /** Default currency for the project (ISO 4217 code) */
   defaultCurrency: string;
+  /** Optional Stripe organization ID for Connect */
+  orgId?: string;
   /** Timestamp when project was created */
   createdAt: string;
   /** Timestamp when project was last updated */

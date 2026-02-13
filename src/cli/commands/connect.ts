@@ -111,7 +111,7 @@ export async function connectCommand(): Promise<void> {
 
   switch (operation) {
     case 'start':
-      await startConnect(stripeClient, project);
+      await startConnect(stripeClient, project, configManager);
       break;
     case 'create':
       await createAccount(stripeClient);
@@ -128,8 +128,38 @@ export async function connectCommand(): Promise<void> {
   }
 }
 
-async function startConnect(stripeClient: StripeClient, project: ProjectConfig): Promise<void> {
+async function startConnect(stripeClient: StripeClient, project: ProjectConfig, configManager: ConfigManager): Promise<void> {
   console.log(chalk.bold('\n--- Stripe Connect Setup ---\n'));
+
+  // Step 0: Prompt for org ID if not already set
+  if (project.orgId) {
+    console.log(chalk.gray(`  Stripe Org ID: ${project.orgId}\n`));
+  } else {
+    console.log(chalk.white('  To find your Stripe organization ID:'));
+    console.log(chalk.white('  1. Log in to your Stripe Dashboard'));
+    console.log(chalk.white('  2. Go to Settings → Organization'));
+    console.log(chalk.cyan('     https://dashboard.stripe.com/settings/organization\n'));
+    console.log(chalk.gray('  Your org ID looks like: org_6SNYbwPDSQupbJ7WySAFNzc\n'));
+
+    const { orgId } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'orgId',
+        message: 'Stripe organization ID (paste org_... or press Enter to skip):',
+        validate: (input: string) => {
+          if (!input.trim()) return true;
+          if (!input.startsWith('org_')) return 'Org ID must start with org_';
+          return true;
+        },
+      },
+    ]);
+
+    if (orgId.trim()) {
+      await configManager.updateProject(project.name, { orgId: orgId.trim() });
+      project.orgId = orgId.trim();
+      console.log(chalk.green(`  ✓ Org ID saved to project "${project.name}"\n`));
+    }
+  }
 
   // Step 1: Retrieve platform account
   const spinner = ora('Checking your Stripe platform account...').start();
@@ -217,6 +247,9 @@ async function startConnect(stripeClient: StripeClient, project: ProjectConfig):
   console.log(chalk.bold.green('\n  Connect is ready!\n'));
   console.log(chalk.bold('  Platform:'), businessName);
   console.log(chalk.bold('  Account ID:'), platform.id);
+  if (project.orgId) {
+    console.log(chalk.bold('  Org ID:'), project.orgId);
+  }
   console.log(chalk.bold('  Connected Accounts:'), accounts.length);
   console.log();
 

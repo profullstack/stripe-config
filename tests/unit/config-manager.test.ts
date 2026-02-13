@@ -359,6 +359,36 @@ describe('ConfigManager', () => {
       expect(updated.updatedAt).not.toBe(mockConfig.projects[0].updatedAt);
     });
 
+    it('should update project with orgId', async () => {
+      const mockConfig = {
+        version: '1.0.0',
+        projects: [
+          {
+            id: 'test-id',
+            name: 'test-project',
+            environment: 'test' as const,
+            publishableKey: 'pk_test_123',
+            secretKey: 'sk_test_123',
+            defaultCurrency: 'usd',
+            createdAt: '2024-01-01T00:00:00.000Z',
+            updatedAt: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+      };
+
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockConfig));
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fs.chmod).mockResolvedValue(undefined);
+
+      const updated = await configManager.updateProject('test-project', {
+        orgId: 'org_6SNYbwPDSQupbJ7WySAFNzc',
+      });
+
+      expect(updated.orgId).toBe('org_6SNYbwPDSQupbJ7WySAFNzc');
+      expect(updated.updatedAt).not.toBe(mockConfig.projects[0].updatedAt);
+    });
+
     it('should throw ConfigError if project not found', async () => {
       const mockConfig = {
         version: '1.0.0',
