@@ -5,6 +5,58 @@ import { ConfigManager } from '../../core/config-manager.js';
 import { StripeClient } from '../../core/stripe-client.js';
 import type { ProjectConfig } from '../../core/types.js';
 
+const MANUAL_ENTRY = '__manual__';
+
+async function pickAccount(stripeClient: StripeClient, action: string): Promise<string | null> {
+  const spinner = ora('Fetching connected accounts...').start();
+  try {
+    const accounts = await stripeClient.listConnectAccounts({ limit: 100 });
+    spinner.stop();
+
+    if (accounts.length === 0) {
+      console.log(chalk.yellow('\nNo connected accounts found.'));
+      return null;
+    }
+
+    const { accountId } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'accountId',
+        message: `Select account to ${action}:`,
+        choices: [
+          ...accounts.map((a) => ({
+            name: `${a.id} ${chalk.gray(`${a.type || 'unknown'} | ${a.country || '??'} | charges: ${a.charges_enabled ? 'yes' : 'no'}`)}`,
+            value: a.id,
+          })),
+          new inquirer.Separator(),
+          { name: 'Enter ID manually', value: MANUAL_ENTRY },
+        ],
+      },
+    ]);
+
+    if (accountId === MANUAL_ENTRY) {
+      const { manualId } = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'manualId',
+          message: 'Account ID:',
+          validate: (input: string) => {
+            if (!input.trim()) return 'Account ID is required';
+            if (!input.startsWith('acct_')) return 'Account ID must start with acct_';
+            return true;
+          },
+        },
+      ]);
+      return manualId;
+    }
+
+    return accountId;
+  } catch (error: any) {
+    spinner.fail('Failed to fetch accounts');
+    throw error;
+  }
+}
+
 /**
  * Connect command - Manage Stripe Connect accounts
  */
@@ -182,17 +234,10 @@ async function createAccount(stripeClient: StripeClient): Promise<void> {
 async function createLink(stripeClient: StripeClient): Promise<void> {
   console.log(chalk.bold('\nGenerate Onboarding Link\n'));
 
+  const accountId = await pickAccount(stripeClient, 'generate link for');
+  if (!accountId) return;
+
   const answers = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'account',
-      message: 'Account ID:',
-      validate: (input: string) => {
-        if (!input.trim()) return 'Account ID is required';
-        if (!input.startsWith('acct_')) return 'Account ID must start with acct_';
-        return true;
-      },
-    },
     {
       type: 'input',
       name: 'refresh_url',
@@ -220,7 +265,7 @@ async function createLink(stripeClient: StripeClient): Promise<void> {
 
   try {
     const link = await stripeClient.createAccountLink({
-      account: answers.account,
+      account: accountId,
       refresh_url: answers.refresh_url,
       return_url: answers.return_url,
       type: answers.type,
@@ -240,18 +285,8 @@ async function createLink(stripeClient: StripeClient): Promise<void> {
 }
 
 async function getAccount(stripeClient: StripeClient): Promise<void> {
-  const { accountId } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'accountId',
-      message: 'Account ID:',
-      validate: (input: string) => {
-        if (!input.trim()) return 'Account ID is required';
-        if (!input.startsWith('acct_')) return 'Account ID must start with acct_';
-        return true;
-      },
-    },
-  ]);
+  const accountId = await pickAccount(stripeClient, 'view');
+  if (!accountId) return;
 
   const spinner = ora('Fetching account...').start();
 

@@ -4,6 +4,112 @@ import ora from 'ora';
 import { ConfigManager } from '../../core/config-manager.js';
 import { StripeClient } from '../../core/stripe-client.js';
 import type { ProjectConfig } from '../../core/types.js';
+import type Stripe from 'stripe';
+
+const MANUAL_ENTRY = '__manual__';
+
+async function pickProduct(stripeClient: StripeClient, action: string): Promise<string | null> {
+  const spinner = ora('Fetching products...').start();
+  try {
+    const products = await stripeClient.listProducts({ limit: 100 });
+    spinner.stop();
+
+    if (products.length === 0) {
+      console.log(chalk.yellow('\nNo products found. Create a product first with "stripeconf products".'));
+      return null;
+    }
+
+    const { productId } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'productId',
+        message: `Select product ${action}:`,
+        choices: [
+          ...products.map((p) => ({
+            name: `${p.name}${p.active ? '' : chalk.gray(' (inactive)')} ${chalk.gray(p.id)}`,
+            value: p.id,
+          })),
+          new inquirer.Separator(),
+          { name: 'Enter ID manually', value: MANUAL_ENTRY },
+        ],
+      },
+    ]);
+
+    if (productId === MANUAL_ENTRY) {
+      const { manualId } = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'manualId',
+          message: 'Product ID:',
+          validate: (input: string) => input.trim() ? true : 'Product ID is required',
+        },
+      ]);
+      return manualId;
+    }
+
+    return productId;
+  } catch (error: any) {
+    spinner.fail('Failed to fetch products');
+    throw error;
+  }
+}
+
+function formatPrice(price: Stripe.Price): string {
+  const amount = price.unit_amount
+    ? `${(price.unit_amount / 100).toFixed(2)} ${price.currency.toUpperCase()}`
+    : 'Metered';
+  const recurring = price.recurring
+    ? ` / ${price.recurring.interval_count || 1} ${price.recurring.interval}(s)`
+    : ' one-time';
+  const nickname = price.nickname ? ` "${price.nickname}"` : '';
+  return `${amount}${recurring}${nickname}`;
+}
+
+async function pickPrice(stripeClient: StripeClient, action: string): Promise<string | null> {
+  const spinner = ora('Fetching prices...').start();
+  try {
+    const prices = await stripeClient.listPrices({ limit: 100 });
+    spinner.stop();
+
+    if (prices.length === 0) {
+      console.log(chalk.yellow('\nNo prices found.'));
+      return null;
+    }
+
+    const { priceId } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'priceId',
+        message: `Select price to ${action}:`,
+        choices: [
+          ...prices.map((p) => ({
+            name: `${formatPrice(p)}${p.active ? '' : chalk.gray(' (inactive)')} ${chalk.gray(p.id)}`,
+            value: p.id,
+          })),
+          new inquirer.Separator(),
+          { name: 'Enter ID manually', value: MANUAL_ENTRY },
+        ],
+      },
+    ]);
+
+    if (priceId === MANUAL_ENTRY) {
+      const { manualId } = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'manualId',
+          message: 'Price ID:',
+          validate: (input: string) => input.trim() ? true : 'Price ID is required',
+        },
+      ]);
+      return manualId;
+    }
+
+    return priceId;
+  } catch (error: any) {
+    spinner.fail('Failed to fetch prices');
+    throw error;
+  }
+}
 
 /**
  * Prices command - Manage Stripe prices
@@ -88,15 +194,9 @@ async function listPrices(stripeClient: StripeClient): Promise<void> {
 
   let productId: string | undefined;
   if (filterByProduct) {
-    const answer = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'productId',
-        message: 'Product ID:',
-        validate: (input: string) => input.trim() ? true : 'Product ID is required',
-      },
-    ]);
-    productId = answer.productId;
+    const picked = await pickProduct(stripeClient, 'to filter by');
+    if (!picked) return;
+    productId = picked;
   }
 
   const spinner = ora('Fetching prices...').start();
@@ -117,11 +217,11 @@ async function listPrices(stripeClient: StripeClient): Promise<void> {
       const amount = price.unit_amount
         ? `${(price.unit_amount / 100).toFixed(2)} ${price.currency.toUpperCase()}`
         : 'Metered';
-      
+
       console.log(chalk.bold(`  ${amount}`) + chalk.gray(` (${price.id})`));
       console.log(chalk.gray(`    Product: ${price.product}`));
       console.log(chalk.gray(`    Active: ${price.active ? 'Yes' : 'No'}`));
-      
+
       if (price.recurring) {
         console.log(
           chalk.gray(
@@ -131,7 +231,7 @@ async function listPrices(stripeClient: StripeClient): Promise<void> {
       } else {
         console.log(chalk.gray(`    Type: One-time`));
       }
-      
+
       if (price.nickname) {
         console.log(chalk.gray(`    Nickname: ${price.nickname}`));
       }
@@ -144,14 +244,8 @@ async function listPrices(stripeClient: StripeClient): Promise<void> {
 }
 
 async function getPrice(stripeClient: StripeClient): Promise<void> {
-  const { priceId } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'priceId',
-      message: 'Price ID:',
-      validate: (input: string) => input.trim() ? true : 'Price ID is required',
-    },
-  ]);
+  const priceId = await pickPrice(stripeClient, 'view');
+  if (!priceId) return;
 
   const spinner = ora('Fetching price...').start();
 
@@ -163,16 +257,16 @@ async function getPrice(stripeClient: StripeClient): Promise<void> {
     console.log(chalk.bold('  ID:'), price.id);
     console.log(chalk.bold('  Product:'), price.product);
     console.log(chalk.bold('  Currency:'), price.currency.toUpperCase());
-    
+
     if (price.unit_amount) {
       console.log(
         chalk.bold('  Amount:'),
         `${(price.unit_amount / 100).toFixed(2)} ${price.currency.toUpperCase()}`
       );
     }
-    
+
     console.log(chalk.bold('  Active:'), price.active ? 'Yes' : 'No');
-    
+
     if (price.recurring) {
       console.log(chalk.bold('  Type:'), 'Recurring');
       console.log(
@@ -185,15 +279,15 @@ async function getPrice(stripeClient: StripeClient): Promise<void> {
     } else {
       console.log(chalk.bold('  Type:'), 'One-time');
     }
-    
+
     if (price.nickname) {
       console.log(chalk.bold('  Nickname:'), price.nickname);
     }
-    
+
     if (price.lookup_key) {
       console.log(chalk.bold('  Lookup Key:'), price.lookup_key);
     }
-    
+
     if (price.metadata && Object.keys(price.metadata).length > 0) {
       console.log(chalk.bold('  Metadata:'), JSON.stringify(price.metadata, null, 2));
     }
@@ -210,13 +304,11 @@ async function createPrice(
 ): Promise<void> {
   console.log(chalk.bold('\nCreate New Price\n'));
 
+  // Pick product from list instead of typing ID
+  const productId = await pickProduct(stripeClient, 'to add a price to');
+  if (!productId) return;
+
   const answers = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'productId',
-      message: 'Product ID:',
-      validate: (input: string) => input.trim() ? true : 'Product ID is required',
-    },
     {
       type: 'input',
       name: 'currency',
@@ -296,7 +388,7 @@ async function createPrice(
 
   try {
     const priceData: any = {
-      product: answers.productId,
+      product: productId,
       currency: answers.currency.toLowerCase(),
       active: amountAnswer.active,
     };
@@ -337,14 +429,8 @@ async function createPrice(
 }
 
 async function updatePrice(stripeClient: StripeClient): Promise<void> {
-  const { priceId } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'priceId',
-      message: 'Price ID to update:',
-      validate: (input: string) => input.trim() ? true : 'Price ID is required',
-    },
-  ]);
+  const priceId = await pickPrice(stripeClient, 'update');
+  if (!priceId) return;
 
   // Fetch current price
   const spinner = ora('Fetching price...').start();
@@ -404,14 +490,8 @@ async function updatePrice(stripeClient: StripeClient): Promise<void> {
 }
 
 async function archivePrice(stripeClient: StripeClient): Promise<void> {
-  const { priceId } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'priceId',
-      message: 'Price ID to archive:',
-      validate: (input: string) => input.trim() ? true : 'Price ID is required',
-    },
-  ]);
+  const priceId = await pickPrice(stripeClient, 'archive');
+  if (!priceId) return;
 
   // Fetch price to show details
   const spinner = ora('Fetching price...').start();

@@ -5,6 +5,54 @@ import { ConfigManager } from '../../core/config-manager.js';
 import { StripeClient } from '../../core/stripe-client.js';
 import type { ProjectConfig } from '../../core/types.js';
 
+const MANUAL_ENTRY = '__manual__';
+
+async function pickProduct(stripeClient: StripeClient, action: string): Promise<string | null> {
+  const spinner = ora('Fetching products...').start();
+  try {
+    const products = await stripeClient.listProducts({ limit: 100 });
+    spinner.stop();
+
+    if (products.length === 0) {
+      console.log(chalk.yellow('\nNo products found.'));
+      return null;
+    }
+
+    const { productId } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'productId',
+        message: `Select product to ${action}:`,
+        choices: [
+          ...products.map((p) => ({
+            name: `${p.name}${p.active ? '' : chalk.gray(' (inactive)')} ${chalk.gray(p.id)}`,
+            value: p.id,
+          })),
+          new inquirer.Separator(),
+          { name: 'Enter ID manually', value: MANUAL_ENTRY },
+        ],
+      },
+    ]);
+
+    if (productId === MANUAL_ENTRY) {
+      const { manualId } = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'manualId',
+          message: 'Product ID:',
+          validate: (input: string) => input.trim() ? true : 'Product ID is required',
+        },
+      ]);
+      return manualId;
+    }
+
+    return productId;
+  } catch (error: any) {
+    spinner.fail('Failed to fetch products');
+    throw error;
+  }
+}
+
 /**
  * Products command - Manage Stripe products
  */
@@ -104,14 +152,8 @@ async function listProducts(stripeClient: StripeClient): Promise<void> {
 }
 
 async function getProduct(stripeClient: StripeClient): Promise<void> {
-  const { productId } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'productId',
-      message: 'Product ID:',
-      validate: (input: string) => input.trim() ? true : 'Product ID is required',
-    },
-  ]);
+  const productId = await pickProduct(stripeClient, 'view');
+  if (!productId) return;
 
   const spinner = ora('Fetching product...').start();
 
@@ -210,14 +252,8 @@ async function createProduct(stripeClient: StripeClient): Promise<void> {
 }
 
 async function updateProduct(stripeClient: StripeClient): Promise<void> {
-  const { productId } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'productId',
-      message: 'Product ID to update:',
-      validate: (input: string) => input.trim() ? true : 'Product ID is required',
-    },
-  ]);
+  const productId = await pickProduct(stripeClient, 'update');
+  if (!productId) return;
 
   // Fetch current product
   const spinner = ora('Fetching product...').start();
@@ -284,14 +320,8 @@ async function updateProduct(stripeClient: StripeClient): Promise<void> {
 }
 
 async function deleteProduct(stripeClient: StripeClient): Promise<void> {
-  const { productId } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'productId',
-      message: 'Product ID to delete:',
-      validate: (input: string) => input.trim() ? true : 'Product ID is required',
-    },
-  ]);
+  const productId = await pickProduct(stripeClient, 'delete');
+  if (!productId) return;
 
   // Fetch product to show details
   const spinner = ora('Fetching product...').start();
