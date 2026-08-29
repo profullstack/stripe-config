@@ -31,9 +31,7 @@
     "version:patch": "pnpm version patch --no-git-tag-version",
     "version:minor": "pnpm version minor --no-git-tag-version",
     "version:major": "pnpm version major --no-git-tag-version",
-    "prepublishOnly": "pnpm test && pnpm build",
-    "postinstall": "pnpm dlx @socketsecurity/socket-patch apply --silent --ecosystems npm",
-    "dependencies": "pnpm dlx @socketsecurity/socket-patch apply --silent --ecosystems npm"
+    "prepublishOnly": "pnpm test && pnpm build"
   },
   "keywords": [
     "stripe",
@@ -74,5 +72,10 @@
     "prettier": "^3.0.0",
     "typescript": "^5.3.0",
     "vitest": "^1.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "flatted": "^3.4.4"
+    }
   }
 }
